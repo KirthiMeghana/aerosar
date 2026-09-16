@@ -1,16 +1,26 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { Theme } from '../hooks/useTheme';
+import type { MissionModel } from '../types';
+import type { LinkView } from '../lib/derive';
+import ConnectionIndicator from './ConnectionIndicator';
 import { SparkleIcon, PulseIcon, SlidersIcon, ClockIcon, GlobeIcon, HamburgerIcon, SunIcon, MoonIcon } from './icons';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Live operations', icon: <PulseIcon />, end: true },
-  { to: '/mission-setup', label: 'Mission setup', icon: <SlidersIcon /> },
+  { to: '/mission-control', label: 'Mission control', icon: <SlidersIcon /> },
   { to: '/mission-history', label: 'Mission history', icon: <ClockIcon /> },
-  { to: '/standalone', label: 'Standalone view', icon: <GlobeIcon /> }
+  { to: '/briefing', label: 'Briefing view', icon: <GlobeIcon /> }
 ];
 
-export default function NavHeader({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+interface Props {
+  theme: Theme;
+  onToggleTheme: () => void;
+  model: MissionModel;
+  link: LinkView;
+}
+
+export default function NavHeader({ theme, onToggleTheme, model, link }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -24,7 +34,7 @@ export default function NavHeader({ theme, onToggleTheme }: { theme: Theme; onTo
             <div className="nav__brand-title">
               Aero<span>SAR</span>
             </div>
-            <div className="nav__brand-subtitle">Autonomous response systems</div>
+            <div className="nav__brand-subtitle">Command center</div>
           </div>
         </div>
 
@@ -43,10 +53,15 @@ export default function NavHeader({ theme, onToggleTheme }: { theme: Theme; onTo
         </nav>
 
         <div className="nav__right">
-          <div className="nav__status">
-            <span className="legend-dot" style={{ background: 'var(--signal)' }} />
-            <span className="nav__status-label">Network nominal</span>
+          <div className="nav__mission mono" title="Current mission">
+            {model.mission ? model.mission.missionId : 'No mission'}
           </div>
+          {model.source === 'simulator' && (
+            <span className="sim-badge" title="Data comes from the built-in demo simulator, not the drone">
+              Simulated data
+            </span>
+          )}
+          <ConnectionIndicator link={link} compact />
           <button
             className="theme-toggle"
             type="button"
@@ -56,13 +71,11 @@ export default function NavHeader({ theme, onToggleTheme }: { theme: Theme; onTo
           >
             {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
           </button>
-          <div className="nav__avatar" title="Operator">
-            OP
-          </div>
           <button
             className="nav__menu-toggle"
             type="button"
             aria-label="Open menu"
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
           >
             <HamburgerIcon />
