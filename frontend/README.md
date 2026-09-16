@@ -1,59 +1,102 @@
-# AeroSAR Mission Control — React + TypeScript + Leaflet + WebSocket
+# AEROSAR Command Center — Dashboard (Member 5)
 
-A real-time dashboard for an autonomous SAR drone: live video panel, live map
-(survivor/hazard markers + safe route + drone position), survivor/hazard
-tallies, critical alerts, and a mission event log.
+React + TypeScript + Vite + Leaflet dashboard for SIH 2026 PS 26177.
+It covers Requirement 8 and the on-screen half of Requirement 7 (offline resilience) from the master
+document (`../docs/AEROSAR_SIH_PS26177_Master_Document_final.md`, §6.5 and §14).
 
 ## Run it
 
+Needs Node.js 18 or newer.
+
 ```bash
+cd frontend
 npm install
-npm run dev
+npm run dev              # dashboard on http://localhost:5173 with the built-in demo scenario
 ```
 
-Open the printed localhost URL. It runs immediately against a **built-in
-simulator** — no backend needed — so you can demo it right now. Detections,
-alerts, and telemetry stream in over ~10 seconds on load.
+The demo scenario plays the doc's recommended demo (§15.1) on a loop you can restart:
+a fire + smoke survivor that becomes **CRITICAL**, a flood survivor (HIGH), a survivor near a damaged
+structure (MEDIUM) and one out in the open (LOW), a GPS-denied strip, and an automatic network cut on the
+last search lane. Two detections happen while offline and appear after the SYNCING step, in their real
+time order. Everything shown is labelled "Simulated data".
 
-## Connecting the real backend
+### Against a real WebSocket
 
-Open `src/App.tsx` and set:
+```bash
+# terminal 1 — mock backend with the same endpoints Member 4 will build
+npm run mock:server      # ws://localhost:8000/ws/live
 
-```ts
-const WS_URL: string | null = 'ws://localhost:8000/ws'; // your teammate's endpoint
+# terminal 2
+npm run dev:backend      # uses .env.backend
 ```
 
-That's it — the simulator is skipped and the dashboard renders whatever your
-backend sends. See **`../WS_CONTRACT.md`** for the exact JSON message shapes
-the backend should emit (`telemetry`, `detection`, `alert`, `mission_status`,
-`route`, `video_status`). Give that file to your backend teammate — it's the
-whole API contract between your two halves of the project.
+For Member 4's real backend, copy `.env.example` to `.env.local` and set `VITE_WS_URL` / `VITE_API_BASE`,
+or open the dashboard with a URL parameter (handy on demo day, no rebuild needed):
 
-## Where things live
+```
+http://localhost:5173/?ws=ws://192.168.1.20:8000/ws/live
+http://localhost:5173/?ws=sim          # force the simulator
+```
 
-- `src/types.ts` — shared TypeScript types / the WS message contract
-- `src/hooks/useMissionSocket.ts` — connects the socket, reduces incoming
-  messages into one state object, falls back to the simulator when `WS_URL`
-  is null, auto-reconnects every 3s if the socket drops
-- `src/mock/simulator.ts` — the demo data generator (not used once a real
-  `WS_URL` is set)
-- `src/components/` — `Header`, `VideoFeed`, `MapPanel`, `Tallies`,
-  `AlertStack`, `MissionLog`
-- `src/index.css` — all design tokens (colors, type, spacing) and layout
+## Scripts
 
-## Wiring real video
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dashboard + simulator |
+| `npm run dev:backend` | Dashboard pointed at `localhost:8000` |
+| `npm run mock:server` | Mock backend (WebSocket + REST) on port 8000 |
+| `npm test` | Unit tests: reducer, link indicator, priority order, §11.7 worked example |
+| `npm run build` | Type-check and production build into `dist/` |
 
-`VideoFeed.tsx` currently shows a HUD-styled placeholder. When you have a
-real stream (WebRTC, HLS, or an MJPEG endpoint), drop it into the
-`.video-frame` div in place of the placeholder — the HUD overlay (altitude,
-speed, heading, GPS, timestamp) is already layered on top of the frame with
-`position: absolute`, so it'll sit above whatever video element you use.
+## Pages
 
-## Notes
+| Page | Purpose |
+|---|---|
+| **Live operations** `/` | The judge-facing screen: feed (RGB/thermal), mission status, disaster map, survivor priority list, alerts, mission log, link indicator. |
+| **Mission control** | Start / abort mission; data-link diagnostics and per-type message counts (Day 2 "confirm live message receipt"); buttons to rehearse the network cut in the simulator. |
+| **Mission history** | Replay slider for this browser session, or for any mission from `GET /api/missions/{id}/history`. |
+| **Briefing view** | Large-type summary for a projector or second monitor. |
 
-- Built with plain Leaflet (not `react-leaflet`) directly against a ref, so
-  you have full control over marker/layer lifecycle.
-- Map tiles are CARTO's dark basemap (free, no API key) — swap the
-  `tileLayer` URL in `MapPanel.tsx` if you'd rather use something else.
-- Responsive down to mobile: the video/map/tally grid stacks into a single
-  column under ~980px.
+## How the requirement-8 elements map to the screen (§14.3)
+
+| Element | Where | Message |
+|---|---|---|
+| Live drone feed | Live drone feed panel, RGB/Thermal toggle | `video_status` / `video_frame` |
+| Survivor locations | Numbered circles on the map + priority list | `detection` + `risk_score` |
+| Hazard locations | Squares with shaded zone on the map | `hazard` |
+| Mission status | Mission status panel | `mission_status` |
+| Alerts | Alerts panel + pop-ups for critical/link events | `alert` |
+| Drone status | Battery, navigation mode, video HUD | `mission_status`, `drone_pose` |
+| Map | Disaster map | all of the above + `route` |
+| Connectivity | Top bar and page header indicator | `mission_status.link_connected`, `sync_status`, 5 s staleness |
+
+## Code map
+
+```
+src/
+  types.ts                 contract types (mirror aerosar_msgs) + client model
+  lib/reducer.ts           pure: WebSocket message → model   (unit-tested)
+  lib/derive.ts            link indicator, priority ordering, alert colours
+  lib/levels.ts            priority colours/labels — one place for §14.4
+  lib/time.ts              stamp normalisation (ROS Time / ISO / epoch)
+  lib/replay.ts            mission replay from session log or REST history
+  lib/config.ts            VITE_WS_URL / VITE_API_BASE / ?ws= override
+  hooks/useMissionFeed.ts  WebSocket (auto-reconnect) or simulator
+  mock/scenario.ts         demo scenario engine (browser + mock server)
+  mock/riskScore.ts        §11.3 formula — demo data only, never used on real data
+  components/              panels
+  pages/                   routes
+mock-server/server.ts      mock backend
+```
+
+## Rules this code follows (so please keep them)
+
+- **No business logic in the dashboard.** Scores, priority levels and reasons come from the backend.
+- **Order by event time, not arrival** (§13.6). Deduplicate by id (§13.4).
+- **Honest labels.** Simulated data, simulated video and indicative hazard zones are labelled as such (§17, §21.2).
+- **Works without internet at the venue.** Leaflet CSS is bundled; if map tiles can't load, markers
+  still draw on a grid. Fonts fall back to system fonts.
+- The contract lives in `WS_CONTRACT.md` and `src/types.ts`. Change both together, and get team sign-off
+  for anything that touches `aerosar_msgs` (§7).
+
+See `TESTING.md` for the Member 5 test checklist.
