@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+# build output
+dist/
+build/
+*.tsbuildinfo
+# env files (commit .env.example only)
+.env
+.env.local
+.env.*.local
+# python / ROS (other members' modules)
+__pycache__/
+*.pyc
+.venv/
+install/
+log/
+*.db
+*.sqlite
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
